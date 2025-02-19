@@ -7,9 +7,52 @@ c     *                                            *
 c     *                pspw_wannier2               *
 c     *                                            *
 c     **********************************************
-
+c ============================================================================
+c  Program: `pspw_wannier2.F`
+c  Purpose: Computes Wannier orbitals using the Damle-Lin-Ying algorithm
+c           as part of the Plane-Wave Self-Consistent Field (PSPW) method.
+c
+c  Description:
+c  - This subroutine implements the localization of electronic wavefunctions 
+c    using the **Wannier transformation** to obtain maximally localized orbitals.
+c  - Uses **parallel processing (MPI)** for efficient computation.
+c  - Computes the **center of charge and electronic dipoles** from localized orbitals.
+c
+c  Inputs:
+c  - `rtdb` (Integer) : Reference to the **Runtime Database (RTDB)** used to store
+c                        and retrieve computational parameters.
+c
+c  Outputs:
+c  - Returns **logical** value `.true.` if the computation succeeds, `.false.` otherwise.
+c  - Computes **Wannier centers** in real space.
+c  - Writes **electronic dipole moment** and Wannier orbital centers to output.
+c
+c  Implementation Details:
+c  - Initializes **lattice and pseudopotential** information.
+c  - Reads **Fourier-space wavefunctions** and performs **FFT** to real-space.
+c  - Computes **Wannier center positions** using eigenvalues of **overlap matrices**.
+c  - Transforms reciprocal space vectors to real space.
+c  - Uses **linear algebra routines (DGELS)** for least-square fitting.
+c  - Computes the **Wannier dipole moment** using **Resta's approach**.
+c  - Allocates and deallocates memory dynamically.
+c
+c  Dependencies:
+c  - Uses **DGELS (LAPACK)** for solving linear least-square systems.
+c  - Requires **MPI parallelization** via `Parallel_Init()`.
+c  - Interfaces with **NWChem libraries** for I/O and memory management.
+c
+c  Author(s):
+c  - Eric J. Bylaska, Patrick Nichols (PNNL)
+c  - Anil Damle, Lexing Ying (Stanford), Lin Lin (UC Berkeley)
+c
+c  Version:
+c  - PSPW Wannier Generation, Version 5.00 (June 20, 2016)
+c
+c  License:
+c  - Distributed under **NWChem open-source license**.
+c
+c ============================================================================
 c Computes wannier orbitals using the Damle-Lin-Ying algorithm.
-
       logical function pspw_wannier2(rtdb)
       implicit none
       integer rtdb

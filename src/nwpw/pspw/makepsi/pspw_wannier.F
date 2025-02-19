@@ -7,8 +7,40 @@ c     *                                            *
 c     *                pspw_wannier                *
 c     *                                            *
 c     **********************************************
-
-c Computes wannier orbitals using the Silvestrelli algorithm.
+c
+c  Computes Wannier orbitals using the Silvestrelli algorithm
+c  as part of the Plane-Wave Self-Consistent Field (PSPW)
+c  method in NWChem.
+c
+c  PARAMETERS:
+c      rtdb  - Integer (IN)
+c              Reference to the RTDB (Runtime Database),
+c              used for retrieving and storing calculation data.
+c
+c  RETURNS:
+c      pspw_wannier - Logical (OUT)
+c                     Returns .true. if the computation completes
+c                     successfully, .false. otherwise.
+c
+c  DEPENDENCIES:
+c      - Uses MPI parallelization via `Parallel_Init()`
+c      - Calls various external subroutines for:
+c         * Ion and pseudopotential initialization
+c         * FFT transformations
+c         * Memory allocation and deallocation
+c      - Requires runtime database (RTDB) for storing input/output
+c
+c  AUTHOR(S):
+c      - Eric C. Brown, Kiril Tsemekhman (Jonsson group, UW)
+c      - Eric J. Bylaska and Patrick Nichols
+c
+c  VERSION:
+c      - PSPW Wannier Generation, Version 5.00
+c      - Developed for NWChem (7.2.3 branch)
+c
+c  LAST MODIFIED:
+c      - <Add Date Here>
+c ============================================================
 
       logical function pspw_wannier(rtdb)
       implicit none
@@ -37,7 +69,7 @@ c Computes wannier orbitals using the Silvestrelli algorithm.
       integer psi(2),psi2(2),psi_r(2),psi_r2(2),Rwav(2)
       integer X(2,6),Xeig(2,6)
       integer A(2),Ar(2)
-      real*8 bv(3,6),wrk(6,6),wts(6),bmat(3,3)
+      real*8 bv(3,6),wrk(6,6),wts(6),bmat(3,3),amat(3,3), real_bv(3)
       real*8 b(3),ixmat(3,6)
       real*8 xx,yy,zz,tmp1(tmp_len),maxtime,pcharge
       real*8 dx(2),dy(2),dz(2),nx,ny,nz,tx,ty,tz,alpha,scal
@@ -285,6 +317,10 @@ c     *** Silvestrelli G3 ***
          bmat(i,1)=lattice_unitg(1,i)
          bmat(i,2)=lattice_unitg(2,i)
          bmat(i,3)=lattice_unitg(3,i)
+
+         amat(i,1)=lattice_unita(1,i)
+         amat(i,2)=lattice_unita(2,i)
+         amat(i,3)=lattice_unita(3,i)
       end do
 
       do i=1,6
@@ -410,18 +446,33 @@ c     *** Silvestrelli G3 ***
             zz=0.0d0
             do j=1,rank
 
+        ! Convert bv(j) from reciprocal space to real space using amat
+        real_bv(1)=amat(1,1)*bv(1,j)+amat(1,2)*bv(2,j)+amat(1,3)*bv(3,j)
+        real_bv(2)=amat(2,1)*bv(1,j)+amat(2,2)*bv(2,j)+amat(2,3)*bv(3,j)
+        real_bv(3)=amat(3,1)*bv(1,j)+amat(3,2)*bv(2,j)+amat(3,3)*bv(3,j)
+
                !*** really just want complex eigenvalues of X here ***
                arg0=dcpl_mb(Xeig(1,j)+(i-1))
                arg0= -wts(j)*datan2(dimag(arg0),dble(arg0))
-               drx(ms)=drx(ms)+bv(1,j)*arg0/scal
-               dry(ms)=dry(ms)+bv(2,j)*arg0/scal
-               drz(ms)=drz(ms)+bv(3,j)*arg0/scal
+
+               drx(ms)=drx(ms)+real_bv(1)*arg0/scal
+               dry(ms)=dry(ms)+real_bv(2)*arg0/scal
+               drz(ms)=drz(ms)+real_bv(3)*arg0/scal
+
+               !drx(ms)=drx(ms)+bv(1,j)*arg0/scal
+               !dry(ms)=dry(ms)+bv(2,j)*arg0/scal
+               !drz(ms)=drz(ms)+bv(3,j)*arg0/scal
 
                arg=dcpl_mb(X(1,j)+shift)
                arg= -wts(j)*datan2(dimag(arg),dble(arg))
-               xx=xx+bv(1,j)*arg/scal
-               yy=yy+bv(2,j)*arg/scal
-               zz=zz+bv(3,j)*arg/scal
+
+               xx=xx+real_bv(1)*arg/scal
+               yy=yy+real_bv(2)*arg/scal
+               zz=zz+real_bv(3)*arg/scal
+
+               !xx=xx+bv(1,j)*arg/scal
+               !yy=yy+bv(2,j)*arg/scal
+               !zz=zz+bv(3,j)*arg/scal
             end do
             ii = ion_nearest_index(xx,yy,zz)
             dix(ms)=dix(ms)+xx
@@ -454,11 +505,19 @@ c     *** Silvestrelli G3 ***
            yy=0.0d0
            zz=0.0d0
            do j=1,rank
+        ! Convert bv(j) from reciprocal space to real space using amat
+        real_bv(1)=amat(1,1)*bv(1,j)+amat(1,2)*bv(2,j)+amat(1,3)*bv(3,j)
+        real_bv(2)=amat(2,1)*bv(1,j)+amat(2,2)*bv(2,j)+amat(2,3)*bv(3,j)
+        real_bv(3)=amat(3,1)*bv(1,j)+amat(3,2)*bv(2,j)+amat(3,3)*bv(3,j)
+
               arg=dcpl_mb(X(1,j)+shift)
               arg= -wts(j)*datan2(dimag(arg),dble(arg))
-              xx=xx+bv(1,j)*arg/scal
-              yy=yy+bv(2,j)*arg/scal
-              zz=zz+bv(3,j)*arg/scal
+              xx=xx+real_bv(1)*arg/scal
+              yy=yy+real_bv(2)*arg/scal
+              zz=zz+real_bv(3)*arg/scal
+              !xx=xx+bv(1,j)*arg/scal
+              !yy=yy+bv(2,j)*arg/scal
+              !zz=zz+bv(3,j)*arg/scal
            end do
            dbl_mb(Rwav(1)+3*((ms-1)*ne(1)+i-1))   = xx
            dbl_mb(Rwav(1)+3*((ms-1)*ne(1)+i-1)+1) = yy

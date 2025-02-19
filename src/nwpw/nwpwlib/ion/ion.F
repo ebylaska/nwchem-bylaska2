@@ -3605,13 +3605,68 @@ c
       return
       end
 
+      subroutine cartesian_to_fractional(x, y, z, a_inv, frac)
+      implicit none
+      real*8 x, y, z, a_inv(3,3), frac(3)
+
+      frac(1) = a_inv(1,1)*x + a_inv(1,2)*y + a_inv(1,3)*z
+      frac(2) = a_inv(2,1)*x + a_inv(2,2)*y + a_inv(2,3)*z
+      frac(3) = a_inv(3,1)*x + a_inv(3,2)*y + a_inv(3,3)*z
+
+      return
+      end
+
+      subroutine fractional_to_cartesian(frac, a, x, y, z)
+      implicit none
+      real*8 frac(3), a(3,3), x, y, z
+
+      x = a(1,1)*frac(1) + a(1,2)*frac(2) + a(1,3)*frac(3)
+      y = a(2,1)*frac(1) + a(2,2)*frac(2) + a(2,3)*frac(3)
+      z = a(3,1)*frac(1) + a(3,2)*frac(2) + a(3,3)*frac(3)
+
+      return
+      end
+
+
 
 *     ***************************
 *     *                         *
 *     *      ion_nearest_index  *
 *     *                         *
 *     ***************************
-*
+c  ------------------------------------------------------------
+c  Finds the nearest ion to a given position `(xx, yy, zz)`
+c  in a periodic system by considering the minimum distance
+c  within the primary and neighboring unit cells.
+c
+c  PARAMETERS:
+c      xx, yy, zz - Real*8 (IN)
+c                   Coordinates of the test position.
+c
+c  RETURNS:
+c      ion_nearest_index - Integer (OUT)
+c                          Index of the closest ion.
+c
+c  METHOD:
+c      - Computes distances from `(xx,yy,zz)` to all ion positions.
+c      - Considers periodic boundary conditions using unit cell
+c        transformation matrix `a(3,3)`.
+c      - Returns the index of the ion with the minimum distance.
+c
+c  DEPENDENCIES:
+c      - Uses `lattice_unita()` to obtain unit cell vectors.
+c      - Requires `dbl_mb(r1(...))` array for ion positions.
+c
+c  AUTHOR(S):
+c      - Developed as part of NWChem's Plane-Wave PSPW Module.
+c
+c  VERSION:
+c      - NWChem 7.2.3 branch
+c
+c  LAST MODIFIED:
+c      - <Add Date Here>
+c ============================================================
+
 *  returns the index of the ion nearest to rtest
 
       integer function ion_nearest_index(xx,yy,zz)
@@ -3622,9 +3677,10 @@ c
 #include "ion.fh"
 
 *     **** local variables ****
-      integer ii,iimin,i1,i2,i3
+      integer ii,iimin,i1,i2,i3,j
       real*8 d,dmin,x,y,z,dx,dy,dz
-      real*8 a(3,3)
+      real*8 a(3,3),a_inv(3,3)
+      real*8 frac_test(3), frac_ion(3), frac_dist(3)
 
 *     **** external functions ****
       real*8   lattice_unita
@@ -3636,27 +3692,53 @@ c
          end do
       end do
 
+      call invert3(a,a_inv)
+
       iimin = -1
       dmin = 9999999990099.0d0
       do ii=1,nion
          dx = dbl_mb(r1(1)+3*(ii-1))   - xx
          dy = dbl_mb(r1(1)+3*(ii-1)+1) - yy
          dz = dbl_mb(r1(1)+3*(ii-1)+2) - zz
-         do i3=-1,1
-            do i2=-1,1
-               do i1=-1,1
-                  x = dx + i1*a(1,1) + i2*a(1,2) + i3*a(1,3)
-                  y = dy + i1*a(2,1) + i2*a(2,2) + i3*a(2,3)
-                  z = dz + i1*a(3,1) + i2*a(3,2) + i3*a(3,3)
-                  d = dsqrt(x*x + y*y + z*z)
-                  if (d.lt.dmin) then
-                     dmin = d
-                     iimin = ii
-                  end if
-               end do
-            end do
+
+*        Convert ion position to fractional coordinates
+         call cartesian_to_fractional(dx, dy, dz, a_inv, frac_ion)
+
+*        Apply periodic boundary conditions in fractional space
+         do j=1,3
+            frac_dist(j) = frac_ion(j) - frac_test(j)
+            frac_dist(j) = frac_dist(j) - anint(frac_dist(j))  ! Nearest periodic image
          end do
+
+*        Convert back to Cartesian coordinates for correct distance
+         call fractional_to_cartesian(frac_dist, a, x, y, z)
+
+*        Compute Euclidean distance
+         d = dsqrt(x*x + y*y + z*z)
+
+*        Check if this ion is the closest so far
+         if (d.lt.dmin) then
+            dmin = d
+            iimin = ii
+         end if
       end do
+
+
+c         do i3=-1,1
+c            do i2=-1,1
+c               do i1=-1,1
+c                  x = dx + i1*a(1,1) + i2*a(1,2) + i3*a(1,3)
+c                  y = dy + i1*a(2,1) + i2*a(2,2) + i3*a(2,3)
+c                  z = dz + i1*a(3,1) + i2*a(3,2) + i3*a(3,3)
+c                  d = dsqrt(x*x + y*y + z*z)
+c                  if (d.lt.dmin) then
+c                     dmin = d
+c                     iimin = ii
+c                  end if
+c               end do
+c            end do
+c         end do
+c      end do
 
       ion_nearest_index = iimin
       return
